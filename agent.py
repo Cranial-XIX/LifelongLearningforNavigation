@@ -86,7 +86,7 @@ class Agent(nn.Module):
 
     def predict(self, x):
         with torch.no_grad():
-            v, w = self.net()
+            v, w = self.net(x)
         return v.item(), w.item()
 
     def count_params(self):

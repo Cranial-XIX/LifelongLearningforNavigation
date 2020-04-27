@@ -1,3 +1,4 @@
+import argparse
 import csv
 import numpy as np
 import torch
@@ -88,6 +89,22 @@ def lifelong():
 
     agent.save()
 
+def predict_example():
+    agent = Agent(dim_input=720, cuda=False) # set cuda to False for prediction
+    agent.load()
+
+    lidar = torch.randn(720).clamp_(-1, 1).reshape(1, -1) # size [1, 720]
+    v, w = agent.predict(lidar) # v, w are numbers
+    print(v, w)
+
 if __name__ == "__main__":
-    #make_data()
-    lifelong()
+    parser = argparse.ArgumentParser(description='Lifelong Robotics')
+    parser.add_argument('--mode', help='which mode to run', choices=['make-data', 'lifelong-learn', 'predict-example'])
+    if args.mode == 'make-data':
+        make_data()
+    elif args.mode == 'lifelong-learn':
+        lifelong()
+    elif args.mode == 'predict-example':
+        predict_example()
+    else:
+        raise NotImplementedError
