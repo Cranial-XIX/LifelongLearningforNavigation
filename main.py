@@ -69,7 +69,7 @@ def lifelong():
     V1, W1, L1 = data[0]
     V2, W2, L2 = data[1]
 
-    batch_size = 32
+    batch_size = 64
     loader1 = torch.utils.data.DataLoader(NavDataset(V1, W1, L1), batch_size=batch_size, num_workers=4, shuffle=True)
     loader2 = torch.utils.data.DataLoader(NavDataset(V2, W2, L2), batch_size=batch_size, num_workers=4, shuffle=True)
 
@@ -82,10 +82,11 @@ def lifelong():
 
     print("[info] learning task 2 ...")
     agent.increment_task()
-    agent.learn(loader2)
+    agent.learn(loader2, gem=True)
     agent.test(loader2)
-
     agent.test(loader1)
+
+    agent.save()
 
 if __name__ == "__main__":
     #make_data()
