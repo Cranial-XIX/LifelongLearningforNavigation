@@ -100,6 +100,7 @@ def predict_example():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Lifelong Robotics')
     parser.add_argument('--mode', help='which mode to run', choices=['make-data', 'lifelong-learn', 'predict-example'])
+    args = parser.parse_args()
     if args.mode == 'make-data':
         make_data()
     elif args.mode == 'lifelong-learn':
