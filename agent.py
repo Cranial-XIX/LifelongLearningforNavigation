@@ -21,10 +21,10 @@ class Replay(data.Dataset):
     def __len__(self):
         return len(self.rb)
 
-    def add(self, v, w, l, n_mem):
+    def add(self, v, w, l, g, n_mem):
         i = 0
         while len(self.rb) < n_mem and i < v.shape[0]:
-            self.rb.append((v[i], w[i], l[i]))
+            self.rb.append((v[i], w[i], l[i], g[i]))
             i += 1
 
     def sample(self, n):
@@ -38,7 +38,7 @@ class Replay(data.Dataset):
 class Model(nn.Module):
     def __init__(self, dim_input):
         super(Model, self).__init__()
-        dim_hidden = 128
+        dim_hidden = 256
         self.base = nn.Sequential(
             nn.Linear(dim_input, dim_hidden),
             nn.ReLU(),
@@ -53,8 +53,10 @@ class Model(nn.Module):
     def forward(self, x):
         h = self.base(x)
         v, w = self.v_head(h), self.w_head(h)
-        v.clamp_(0, 2)
-        w.clamp_(-1.4, 1.4)
+        #v.clamp_(0, 2)
+        #w.clamp_(-1.4, 1.4)
+        v = torch.sigmoid(v) * 2
+        w = torch.tanh(w) * 1.4
         return v, w
 
 
@@ -80,9 +82,11 @@ class Agent(nn.Module):
 
     def save(self, path="./models/trained_agent.pt"):
         torch.save(self.net.state_dict(), path)
+        print("[info] saving model to {}".format(path))
 
     def load(self, path="./models/trained_agent.pt"):
         self.net.load_state_dict(torch.load(path))
+        print("[info] loading model from {}".format(path))
 
     def predict(self, x):
         with torch.no_grad():
@@ -102,8 +106,10 @@ class Agent(nn.Module):
         params = list(self.net.parameters())
         self.opt = Adam(params, lr=3e-4)
 
-    def loss_fn(self, v, w, l):
-        vv, ww = self.net(l)
+    def loss_fn(self, v, w, l, g):
+        l = torch.clamp(l, 0, 1) - 0.5
+        vv, ww = self.net(torch.cat([l, g], -1))
+        #import pdb; pdb.set_trace()
         return F.mse_loss(vv, v) + F.mse_loss(ww, w)
 
     def grad_to_vector(self):
@@ -144,31 +150,32 @@ class Agent(nn.Module):
         for t, m in self.memories.items():
             if t < self.task:
                 self.zero_grad()
-                v, w, l = m.sample(min(64, self.n_mem))
+                v, w, l, g = m.sample(min(64, self.n_mem))
 
                 v = v.unsqueeze(-1)
                 w = w.unsqueeze(-1)
                 if self.cuda:
-                    v = v.cuda(); w = w.cuda(); l = l.cuda()
+                    v = v.cuda(); w = w.cuda(); l = l.cuda(); g = g.cuda()
 
-                loss = self.loss_fn(v, w, l)
+                loss = self.loss_fn(v, w, l, g)
                 loss.backward()
                 prev_grads.append(self.grad_to_vector())
         return torch.stack(prev_grads)
 
-    def test(self, dataloader):
+    def test(self, dataloader, task):
         with torch.no_grad():
             L = 0
-            for v, w, l in dataloader:
+            for v, w, l, g in dataloader:
                 v = v.unsqueeze(-1)
                 w = w.unsqueeze(-1)
                 if self.cuda:
-                    v = v.cuda(); w = w.cuda(); l = l.cuda()
-                loss = self.loss_fn(v, w, l)
+                    v = v.cuda(); w = w.cuda(); l = l.cuda(); g = g.cuda()
+                loss = self.loss_fn(v, w, l, g)
                 L += loss.item()
-        print(f"[info] test loss is {L/len(dataloader)}")
+        #print(f"[info] test loss is {L/len(dataloader)}")
+        print("[info] [task{}] test loss is {}".format(task, L/len(dataloader)))
 
-    def learn(self, dataloader, n_batches=500, gem=True):
+    def learn(self, dataloader, n_batches=1500, gem=True):
         curr_mem = self.memories[self.task]
 
         batch = 0
@@ -179,22 +186,22 @@ class Agent(nn.Module):
             pbar = tqdm(total=n_batches)
 
         while not done:
-            for v, w, l in dataloader:
+            for v, w, l, g in dataloader:
                 batch += 1
 
                 if len(curr_mem) < self.n_mem:
-                    curr_mem.add(v, w, l, self.n_mem)
+                    curr_mem.add(v, w, l, g, self.n_mem)
 
                 v = v.unsqueeze(-1)
                 w = w.unsqueeze(-1)
                 if self.cuda:
-                    v = v.cuda(); w = w.cuda(); l = l.cuda()
+                    v = v.cuda(); w = w.cuda(); l = l.cuda(); g = g.cuda()
 
                 if gem and self.task > 0:
                     G = self.get_G()
 
                 self.opt.zero_grad()
-                loss = self.loss_fn(v, w, l)
+                loss = self.loss_fn(v, w, l, g)
                 loss.backward()
                 total_loss += (loss.detach().cpu().item() - total_loss) * 1/batch
 
