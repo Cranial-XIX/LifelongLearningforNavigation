@@ -83,7 +83,7 @@ def lifelong():
 
     print("[info] learning task 2 ...")
     agent.increment_task()
-    agent.learn(loader2, gem=True)
+    agent.learn(loader2, gem=False)
     agent.test(loader2)
     agent.test(loader1)
 
