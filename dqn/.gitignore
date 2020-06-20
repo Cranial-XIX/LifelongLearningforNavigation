@@ -1,0 +1,6 @@
+__pycache__/*
+nohup/*
+results/*
+runs/*
+logs/*
+test_env.py
