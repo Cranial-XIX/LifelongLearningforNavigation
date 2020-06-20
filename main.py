@@ -8,6 +8,8 @@ from torch.utils.data import Dataset
 from agent import *
 
 def make_data():
+    pass
+    """
     data = []
     for task in range(1, 2+1):
         csvf = f'./data/task{task}-lidar.csv'
@@ -47,12 +49,14 @@ def make_data():
         V, W, L = map(np.array, [V, W, L])
         data.append((V, W, L))
     np.savez("./data/lifelong", data=data)
+    """
 
 class NavDataset(Dataset):
-    def __init__(self, V, W, L):
+    def __init__(self, V, W, L, G):
         self.V = V.astype(np.float32)
         self.W = W.astype(np.float32)
         self.L = L.astype(np.float32)
+        self.G = G.astype(np.float32)
         self.n = V.shape[0]
 
     def __len__(self):
@@ -62,39 +66,46 @@ class NavDataset(Dataset):
         v = self.V[idx]
         w = self.W[idx]
         l = self.L[idx]
-        return v, w, l
+        g = self.G[idx]
+        return v, w, l, g
 
 def lifelong():
-    data = np.load("./data/lifelong.npz", allow_pickle=True)['data']
+    #data = np.load("./data/lifelong.npz", allow_pickle=True)['data']
+    data1 = np.load("../data/lifelong3/focused_ll_data1000.npz", allow_pickle=True) # narrow corridor
+    data2 = np.load("../data/lifelong2/focused_ll_data1000.npz", allow_pickle=True) # obstacle field
 
-    V1, W1, L1 = data[0]
-    V2, W2, L2 = data[1]
+    V1, W1, L1, G1 = data1['V'], data1['W'], data1['L'], data1['G']
+    V2, W2, L2, G2 = data2['V'], data2['W'], data2['L'], data2['G']
 
     batch_size = 64
-    loader1 = torch.utils.data.DataLoader(NavDataset(V1, W1, L1), batch_size=batch_size, num_workers=4, shuffle=True)
-    loader2 = torch.utils.data.DataLoader(NavDataset(V2, W2, L2), batch_size=batch_size, num_workers=4, shuffle=True)
+    loader1 = torch.utils.data.DataLoader(NavDataset(V1, W1, L1, G1), batch_size=batch_size, num_workers=4, shuffle=True)
+    loader2 = torch.utils.data.DataLoader(NavDataset(V2, W2, L2, G2), batch_size=batch_size, num_workers=4, shuffle=True)
 
-    agent = Agent(dim_input=L1.shape[1])
+    agent = Agent(dim_input=L1.shape[1]+G1.shape[1])
 
     print("[info] learning task 1 ...")
     agent.increment_task()
     agent.learn(loader1)
-    agent.test(loader1)
+    print("[info] after learning task 1 ...")
+    agent.test(loader1, task=1)
+
+    print("="*80)
 
     print("[info] learning task 2 ...")
     agent.increment_task()
-    agent.learn(loader2, gem=False)
-    agent.test(loader2)
-    agent.test(loader1)
+    agent.learn(loader2, gem=True)
+    print("[info] after learning task 2 ...")
+    agent.test(loader2, task=2)
+    agent.test(loader1, task=1)
 
     agent.save()
 
 def predict_example():
-    agent = Agent(dim_input=720, cuda=False) # set cuda to False for prediction
+    agent = Agent(dim_input=722, cuda=False) # set cuda to False for prediction
     agent.load()
 
-    lidar = torch.randn(720).clamp_(-1, 1).reshape(1, -1) # size [1, 720]
-    v, w = agent.predict(lidar) # v, w are numbers
+    x = torch.randn(722).clamp_(-1, 1).reshape(1, -1) # size [1, 722]
+    v, w = agent.predict(x) # v, w are numbers
     print(v, w)
 
 if __name__ == "__main__":
